@@ -1,25 +1,85 @@
 #include "common.h"
 
+int get_server_address_type(const char* server_address) {
+    struct in_addr ipv4_addr;
+    struct in6_addr ipv6_addr;
+
+    // Try to parse as IPv4 address
+    if (inet_pton(AF_INET, server_address, &ipv4_addr) == 1) {
+        return AF_INET; // IPv4 address
+    }
+    // Try to parse as IPv6 address
+    else if (inet_pton(AF_INET6, server_address, &ipv6_addr) == 1) {
+        return AF_INET6; // IPv6 address
+    } else {
+        return -1; // Invalid address
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 4) {
-        fprintf(stderr, "Usage: %s <server_ip> <server_port> <max_clients>\n", argv[0]);
+        fprintf(stderr, "SERVER: Invlid input\n Correct Input: %s <server_ip> <server_port> <max_clients>\n", argv[0]);
         exit(1);
     }
 
     int opt = 1;
 
     // Parse command line arguments
-    char *server_ip = argv[1];
+    char* server_ip = argv[1];
     int server_port = atoi(argv[2]);
     int max_clients = atoi(argv[3]);
+    int server_address_type;
+
+    server_address_type = get_server_address_type(server_ip);
+
+    if (server_address_type == -1) {
+        printf("SERVER: Invalid server address: %s\n", server_ip);
+        return 1;
+    }
+
+    int listen_fd;
+    if (server_address_type == AF_INET) {
+        listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    } else if (server_address_type == AF_INET6) {
+        listen_fd = socket(AF_INET6, SOCK_STREAM, 0);
+    } else {
+        fprintf(stderr, "SERVER: Unsupported address type\n");
+        return 1;
+    }
+
+    if (listen_fd == -1) {
+        perror("SERVER: Error opening socket");
+        exit(1);
+    }
+
+    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("SERVER: Error on setsockopt");
+        exit(1);
+    }
+
+    struct sockaddr_storage server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+
+    if (server_address_type == AF_INET) {
+        struct sockaddr_in *server_addr4 = (struct sockaddr_in *)&server_addr;
+        server_addr4->sin_family = AF_INET;
+        server_addr4->sin_addr.s_addr = inet_addr(server_ip);
+        server_addr4->sin_port = htons(server_port);
+    } else if (server_address_type == AF_INET6) {
+        struct sockaddr_in6 *server_addr6 = (struct sockaddr_in6 *)&server_addr;
+        server_addr6->sin6_family = AF_INET6;
+        inet_pton(AF_INET6, server_ip, &(server_addr6->sin6_addr));
+        server_addr6->sin6_port = htons(server_port);
+    }
 
     // Create a socket for the server
+    /*
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1) {
         perror("socket");
         exit(1);
     }
-
+    
     if( setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0 ){
         perror("setsockopt");
         exit(1);
@@ -31,19 +91,20 @@ int main(int argc, char *argv[]) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(server_ip);
     server_addr.sin_port = htons(server_port);
+    */
 
     struct user_data clients[max_clients];
     int client_count = 0;
 
     // Bind the socket to the server address
     if (bind(listen_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        perror("bind");
+        perror("SERVER: Error while binding");
         exit(1);
     }
 
     // Listen for incoming connections
     if (listen(listen_fd, max_clients) == -1) {
-        perror("listen");
+        perror("SERVER: Error while listening");
         exit(1);
     }
 
@@ -63,14 +124,19 @@ int main(int argc, char *argv[]) {
 	
 	int fcur = 0;
 
-    printf("Server intialized\n");
+    printf("SERVER: Server intialized\n");
+    printf("SERVER: IP Address is %s (Type: %s)\n", server_addr, (server_address_type == AF_INET) ? "IPv4" : "IPv6");
+    printf("SERVER: Port number is %d\n", server_port);
+    printf("SERVER: Maximum Client Capacity is %d\n", max_clients);
 
     while (1) {
         FD_ZERO(&read_fds);
         read_fds = master;
 
+        printf("SERVER: Listening....\n");
+
         if (select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1) {
-            perror("select");
+            perror("SERVER: Error while using select");
             exit(1);
         }
 
@@ -83,7 +149,7 @@ int main(int argc, char *argv[]) {
                     int new_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &client_len);
 
                     if (new_fd == -1) {
-                        perror("accept");
+                        perror("SERVER: Error while accepting client connection");
                     } else {
                         // Add the new client to the set
 
@@ -201,7 +267,7 @@ int main(int argc, char *argv[]) {
                         if (nbytes == 0) {
                             printf("[%s has left the chat]", clients[client_index].user_name);
                         } else {
-                            perror("recv");
+                            perror("SERVER: Invalid read");
                         }
                         close(fcur);
                         FD_CLR(fcur, &master);
