@@ -56,15 +56,17 @@ int main(int argc, char *argv[]) {
 
     int q;
 	for(q = 0; q <= max_clients; q++){
-		clients[q].username = '\0';
-		clients[q].socket = -1;
+		strncpy(clients[q].user_name,"\0",sizeof("\0"));
+		clients[q].socket_fd = -1;
         clients[q].user_number = 0;
 	}
 	
 	int fcur = 0;
 
+    printf("Server intialized\n");
+
     while (1) {
-        FD_ZERO(&read_fds)
+        FD_ZERO(&read_fds);
         read_fds = master;
 
         if (select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1) {
@@ -85,17 +87,17 @@ int main(int argc, char *argv[]) {
                     } else {
                         // Add the new client to the set
 
-                        if(client_count+1 > max_clients){
+                        if(client_count + 1 > max_clients){
                             sbcp_message_t* nak_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
                             nak_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
                             nak_msg->sMsgHeader.uiType = NAK;
                             nak_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen("Chat room full, try later\0");
                             nak_msg->sMsgAttribute.uiType = REASON;
                             nak_msg->sMsgAttribute.uiLength = strlen("Chat room full, try later\0");
-                            strcpy(nak_msg.sMsgAttribute.acPayload, "Chat room full, try later\0");
+                            strncpy(nak_msg->sMsgAttribute.acPayload, "Chat room full, try later\0", sizeof("Chat room full, try later\0"));
                             send(new_fd, nak_msg, sizeof(sbcp_message_t), 0);
                             close(new_fd);
-                            free(nak_msg)
+                            free(nak_msg);
                             break;
                         }
 
@@ -108,8 +110,9 @@ int main(int argc, char *argv[]) {
                         } else if (join_msg->sMsgHeader.uiType == JOIN) {
                             // Check if the username is already in use
                             bool username_exists = false;
-                            for (int j = 0; j < client_count; j++) {
-                                if (strcmp(clients[j].user_name, join_msg.sMsgAttribute.acPayload) == 0) {
+                            int j = 0;
+                            for (j = 0; j < client_count; j++) {
+                                if (strcmp(clients[j].user_name, join_msg->sMsgAttribute.acPayload) == 0) {
                                     username_exists = true;
                                     break;
                                 }
@@ -118,9 +121,9 @@ int main(int argc, char *argv[]) {
                             if (!username_exists) {
                                 // Add the client to the list of connected clients
                                 struct user_data new_user;
-                                strcpy(new_user.user_name, join_msg.sMsgAttribute.acPayload);
+                                strncpy(new_user.user_name, join_msg->sMsgAttribute.acPayload,sizeof(join_msg->sMsgAttribute.acPayload));
                                 new_user.socket_fd = new_fd;
-                                new_user.user_number = client_count;
+                                new_user.user_number = client_count+1;
                                 clients[client_count] = new_user;
                                 client_count++;
 
@@ -129,16 +132,17 @@ int main(int argc, char *argv[]) {
                                 sbcp_message_t* ack_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
                                 ack_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
                                 ack_msg->sMsgHeader.uiType = ACK;
-                                ack_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen("Join Successful");
+                                ack_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen("Join Successful\0");
                                 ack_msg->sMsgAttribute.uiType = MESSAGE;
-                                ack_msg->sMsgAttribute.uiLength = strlen("Join Successful");
-                                strcpy(ack_msg->sMsgAttribute.acPayload, "Join Successful");
+                                ack_msg->sMsgAttribute.uiLength = strlen("Join Successful\0");
+                                strncpy(ack_msg->sMsgAttribute.acPayload, "Join Successful\0",sizeof("Join Successful\0"));
                                 send(new_fd, ack_msg, sizeof(sbcp_message_t), 0);
-                                free(ack_msg)
+                                free(ack_msg);
 
                                 // Notify all clients about the new user
-                                char online_message_payload[512];
-                                sprintf(online_message_payload, "[%s has joined the chat]\0", new_user.user_name);
+                                char online_message_payload[16];
+                                printf("New user has joined the chat ->");
+                                sprintf(online_message_payload, "%s\0", new_user.user_name);
 
                                 sbcp_message_t* online_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
                                 online_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
@@ -146,44 +150,56 @@ int main(int argc, char *argv[]) {
                                 online_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(online_message_payload);
                                 online_msg->sMsgAttribute.uiType = USERNAME;
                                 online_msg->sMsgAttribute.uiLength = strlen(online_message_payload);
-                                strcpy(fwd_msg.sMsgAttribute.acPayload, online_message_payload );
+                                strcpy(online_msg->sMsgAttribute.acPayload, online_message_payload );
 
                                 int temp_iter;
                                 for (temp_iter = 0; temp_iter < max_clients; temp_iter++) {
                                     if (clients[temp_iter].socket_fd != -1 && clients[temp_iter].socket_fd != new_fd) {
-                                        send(clients[temp_iter].socket_fd, &fwd_msg, sizeof(sbcp_message_t), 0);
+                                        send(clients[temp_iter].socket_fd, online_msg, sizeof(sbcp_message_t), 0);
                                     }
+                                free(online_msg);   
 
-                                FD_SET(new_fd, &read_fds);
+                                FD_SET(new_fd, &master);
                                 if (new_fd > fdmax) {
                                     fdmax = new_fd;
                                 }
-                                free(online_msg)    
+                                free(online_msg);
+                                free(join_msg);    
 
-                            } else {
+                            }} else {
                                 // Send NAK to the new client if the username is already in use
-                                sbcp_message_t nak_msg;
-                                nak_msg.sMsgHeader.uiVrsn = PROTOCOL_VERSION;
-                                nak_msg.sMsgHeader.uiType = NAK;
-                                nak_msg.sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen("Username already in use");
-                                nak_msg.sMsgAttribute.uiType = REASON;
-                                nak_msg.sMsgAttribute.uiLength = strlen("Username already in use");
-                                strcpy(nak_msg.sMsgAttribute.acPayload, "Username already in use");
-                                send(new_fd, &nak_msg, sizeof(sbcp_message_t), 0);
+                                sbcp_message_t* nak_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
+                                nak_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
+                                nak_msg->sMsgHeader.uiType = NAK;
+                                nak_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen("Username already in use\0");
+                                nak_msg->sMsgAttribute.uiType = REASON;
+                                nak_msg->sMsgAttribute.uiLength = strlen("Username already in use\0");
+                                strncpy(nak_msg->sMsgAttribute.acPayload, "Username already in use\0",sizeof("Username already in use\0"));
+                                send(new_fd, nak_msg, sizeof(sbcp_message_t), 0);
+                                free(nak_msg);
+                                free(join_msg);
                                 close(new_fd);
                             }
                         }
                     }
                 } else {
                     // Handle messages (SEND or IDLE) from clients
-                    sbcp_message_t recv_msg;
-                    int nbytes = recv(fcur, &recv_msg, sizeof(sbcp_message_t), 0);
+                    sbcp_message_t* recv_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
+                    int nbytes = recv(fcur, recv_msg, sizeof(sbcp_message_t), 0);
+
+                    int i=0;
+                        int client_index;
+                        for (i = 0; i < max_clients; i++) {
+                            if (clients[i].socket_fd == fcur) {
+                                client_index = i;
+                            }
+                        }
 
                     if (nbytes <= 0) {
                         // Connection closed or error occurred
+                    
                         if (nbytes == 0) {
-                            // Connection closed by client
-                            printf("[%s has left the chat]", clients[i].user_name);
+                            printf("[%s has left the chat]", clients[client_index].user_name);
                         } else {
                             perror("recv");
                         }
@@ -191,73 +207,93 @@ int main(int argc, char *argv[]) {
                         FD_CLR(fcur, &master);
 
                         char offline_message_payload[512];
-                        sprintf(offline_message, "[%s has left the chat]\n", new_user.user_name);
+                        struct user_data new_user;
+                        
+                        sprintf(offline_message_payload, "%s\0", new_user.user_name);
 
-                        sbcp_message_t offline_message;
-                        fwd_msg.sMsgHeader.uiVrsn = PROTOCOL_VERSION;
-                        fwd_msg.sMsgHeader.uiType = OFFLINE;
-                        fwd_msg.sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(offline_message_payload);
-                        fwd_msg.sMsgAttribute.uiType = USERNAME;
-                        fwd_msg.sMsgAttribute.uiLength = strlen(offline_message_payload);
-                        strcpy(fwd_msg.sMsgAttribute.acPayload, offline_message_payload);
+                        sbcp_message_t* offline_message = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
+                        offline_message->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
+                        offline_message->sMsgHeader.uiType = OFFLINE;
+                        offline_message->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(offline_message_payload);
+                        offline_message->sMsgAttribute.uiType = USERNAME;
+                        offline_message->sMsgAttribute.uiLength = strlen(offline_message_payload);
+                        strncpy(offline_message->sMsgAttribute.acPayload, offline_message_payload, sizeof(offline_message_payload));
 
-                        for (int i = 0; i < max_clients; i++) {
+                        i = 0;
+                        for (i = 0; i < max_clients; i++) {
                             if (clients[i].socket_fd != -1 && clients[i].socket_fd != fcur) {
-                                send(clients[i].socket_fd, &fwd_msg, sizeof(sbcp_message_t), 0);
+                                send(clients[i].socket_fd, offline_message, sizeof(sbcp_message_t), 0);
                             }
                         }    
 
+                        close(clients[client_index].socket_fd);
                         // Remove the client from the list of connected clients
-                        for (int j = 0; j < client_count; j++) {
-                            if (clients[j].socket_fd == i) {
-                                clients[j].socket_fd = -1; // Mark as inactive
-                                break;
-                            }
+                        clients[client_index].socket_fd = -1;
+                        strncpy(clients[client_index].user_name,"\0",sizeof("\0"));
+                        clients[client_index].user_number = 0;
+                        client_count--;
+                        
+                        //Reassign user numbers
+                        int j = 0;
+                        int k = 0;
+                        for (j = 0; j < client_count; j++) {
+                            if (clients[j].socket_fd != -1 ) {
+                                clients[j].user_number = k+1;
+                                k++;
+                            }        
                         }
+
                     } else {
                         // Handle SEND or IDLE message
-                        if (recv_msg.sMsgHeader.uiType == SEND) {
+                        if (recv_msg->sMsgHeader.uiType == SEND) {
                             // Broadcast the message to all other clients
-                            char send_message[512];
-                            snprintf(send_message, sizeof(send_message), "[%s]: %s", clients[i].user_name, recv_msg.sMsgAttribute.acPayload);
+                            char send_message_payload[512];
+                            sprintf(send_message_payload, "[%s]: %s", clients[client_index].user_name, recv_msg->sMsgAttribute.acPayload);
 
-                            sbcp_message_t fwd_msg;
-                            fwd_msg.sMsgHeader.uiVrsn = PROTOCOL_VERSION;
-                            fwd_msg.sMsgHeader.uiType = FWD;
-                            fwd_msg.sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(message);
-                            fwd_msg.sMsgAttribute.uiType = MESSAGE;
-                            fwd_msg.sMsgAttribute.uiLength = strlen(message);
-                            strcpy(fwd_msg.sMsgAttribute.acPayload, message);
-
-                            for (int i = 0; i < MAX_CLIENTS; i++) {
-                                if (clients[i].socket_fd != -1 && clients[i].socket_fd != sender_fd) {
-                                    send(clients[i].socket_fd, &fwd_msg, sizeof(sbcp_message_t), 0);
+                            sbcp_message_t* fwd_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
+                            fwd_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
+                            fwd_msg->sMsgHeader.uiType = FWD;
+                            fwd_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(send_message_payload);
+                            fwd_msg->sMsgAttribute.uiType = MESSAGE;
+                            fwd_msg->sMsgAttribute.uiLength = strlen(send_message_payload);
+                            strncpy(fwd_msg->sMsgAttribute.acPayload, send_message_payload,sizeof(send_message_payload));
+                            
+                            i = 0;
+                            for (i = 0; i < max_clients; i++) {
+                                if (clients[i].socket_fd != -1 && clients[i].socket_fd != fcur) {
+                                    send(clients[i].socket_fd, fwd_msg, sizeof(sbcp_message_t), 0);
                                 }
                             }
+                            free(fwd_msg);
 
-                        } else if (recv_msg.sMsgHeader.uiType == IDLE) {
+                        } else if (recv_msg->sMsgHeader.uiType == IDLE) {
                             // Handle IDLE message
-                            // You can implement idle functionality here
-                            sbcp_message_t fwd_msg;
-                            fwd_msg.sMsgHeader.uiVrsn = PROTOCOL_VERSION;
-                            fwd_msg.sMsgHeader.uiType = FWD;
-                            fwd_msg.sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(message);
-                            fwd_msg.sMsgAttribute.uiType = MESSAGE;
-                            fwd_msg.sMsgAttribute.uiLength = strlen(message);
-                            strcpy(fwd_msg.sMsgAttribute.acPayload, message);
+                            char idle_message_payload[16];
+                            sprintf(idle_message_payload, "%s\0", clients[i].user_name);
 
-                            for (int i = 0; i < MAX_CLIENTS; i++) {
-                                if (clients[i].socket_fd != -1 && clients[i].socket_fd != sender_fd) {
-                                    send(clients[i].socket_fd, &fwd_msg, sizeof(sbcp_message_t), 0);
+                            sbcp_message_t* idle_msg = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
+                            idle_msg->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
+                            idle_msg->sMsgHeader.uiType = FWD;
+                            idle_msg->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(idle_message_payload);
+                            idle_msg->sMsgAttribute.uiType = USERNAME;
+                            idle_msg->sMsgAttribute.uiLength = strlen(idle_message_payload);
+                            strcpy(idle_msg->sMsgAttribute.acPayload, idle_message_payload);
+
+                            i = 0;
+                            for (i = 0; i < max_clients; i++) {
+                                if (clients[i].socket_fd != -1 && clients[i].socket_fd != fcur) {
+                                    send(clients[i].socket_fd, idle_msg, sizeof(sbcp_message_t), 0);
                                 }
                             }
+                            free(idle_msg);
                         }
                     }
                 }
             }
         }
     }
-    }
+    
     close(listen_fd);
     return 0;
+    }
     
