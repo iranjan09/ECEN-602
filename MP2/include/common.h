@@ -1,5 +1,5 @@
-#ifndef COMMON_INCLUDED
-#define COMMON_INCLUDED
+#ifndef CMN_INCLUDE
+#define CMN_INCLUDE
 
 #include <stdio.h>
 #include <string.h>
@@ -53,7 +53,7 @@
 #define IDLE_WAIT_TIME 10
 
 /* SBCP message header format */
-typedef struct
+typedef struct sbcp_header_
 {
     unsigned int uiVrsn:9;
     unsigned int uiType:7;
@@ -61,7 +61,7 @@ typedef struct
 }sbcp_header_t;
 
 /* SBCP message attribute formate */
-typedef struct
+typedef struct sbcp_attribute_
 {
     unsigned int uiType:16;
     unsigned int uiLength:16;
@@ -69,7 +69,7 @@ typedef struct
 }sbcp_attribute_t;
 
 /* SBCP message structure */
-typedef struct
+typedef struct sbcp_message_
 {
     sbcp_header_t    sMsgHeader;
     sbcp_attribute_t sMsgAttribute;
@@ -82,4 +82,4 @@ struct user_data{
     int user_number;
 };
 
-#endif // COMMON_INCLUDED
+#endif // CMN_INCLUDE
