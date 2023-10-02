@@ -257,10 +257,8 @@ int main(int argc, char* argv[]) {
     char* client_username, * serv_ipaddr;
     fd_set read_fds;
     int max_fd;    
-    sbcp_message_t* message = NULL;
     pthread_attr_t sThreadAttr;
     pthread_t threadId = 0;
-    struct sockaddr_storage server_address;
     int server_address_type;
     int ret;
 	
