@@ -5,7 +5,7 @@ pthread_cond_t ready_cond = PTHREAD_COND_INITIALIZER;
 bool isIdleMessage = false;
 
 
-/*int create_socket(bool isIPv4)
+int create_socket(bool isIPv4)
 {
     int socket_fd = -1;
     if (isIPv4 ==  true)
@@ -25,7 +25,7 @@ bool isIdleMessage = false;
         printf("Socket is Created Successfully....\n");
     }
     return socket_fd;
-}*/
+}
 
 void send_chat_message(int socket_fd, const char* message) {
 	
