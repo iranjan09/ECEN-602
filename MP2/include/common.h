@@ -25,9 +25,9 @@
 #include <errno.h>
 
 
-#define QUEUE_SIZE 50
 #define BUFFER_SIZE 20
 #define PAYLOAD_SIZE 512
+#define QUEUE_SIZE 50
 
 /* SBCP Protocol */
 #define PROTOCOL_VERSION 3
