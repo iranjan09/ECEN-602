@@ -2,7 +2,7 @@
 
 pthread_mutex_t ready_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t ready_cond = PTHREAD_COND_INITIALIZER;
-bool isIdleMessageSent = false;
+bool isIdleMessage = false;
 
 
 /*int create_socket(bool isIPv4)
@@ -18,7 +18,7 @@ bool isIdleMessageSent = false;
     }
     if(socket_fd == -1)
     {
-        perror("Socket Create Faild");
+        perror("Socket Create Failed");
         exit(-1);
     }
     else{
@@ -49,7 +49,7 @@ void send_chat_message(int socket_fd, const char* message) {
 
     pthread_mutex_lock(&ready_mutex);
     pthread_cond_signal(&ready_cond);
-    isIdleMessageSent = false;
+    isIdleMessage = false;
     pthread_mutex_unlock(&ready_mutex);
 
     int send_result = send(socket_fd, chatMessage, sizeof(sbcp_message_t), 0);
@@ -217,8 +217,8 @@ void send_idle_message(void *arg) {
             if (errno == EAGAIN) {
                 // Handle the case where the condition variable was signaled but not due to a timeout
             } else {
-                if (isIdleMessageSent == false) {
-                    isIdleMessageSent = true;
+                if (isIdleMessage == false) {
+                    isIdleMessage = true;
 
                     idle_message = (sbcp_message_t *)calloc(1, sizeof(sbcp_message_t));
 
@@ -249,94 +249,98 @@ void send_idle_message(void *arg) {
 
 int main(int argc, char* argv[]) {
     if (argc != 4) {
-        printf("ERROR: Please provide User name, IP address, and port number\n");
+        printf("ERROR: Please provide Client User name, Server IP address, and port number\n");
         return 1;
     }
 
-    int iSocket_fd = -1, port_number = -1;
-    char* pcUserName, * pcIpAddress;
-    fd_set fdRead_Set;
-    int fdMax;
-    sbcp_message_t* psMessage = NULL;
-    unsigned int uiChatLength;
+    int clientsock_fd = -1, serv_port = -1;
+    char* client_username, * serv_ipaddr;
+    fd_set read_fds;
+    int max_fd;    
+    sbcp_message_t* message = NULL;
     pthread_attr_t sThreadAttr;
-    pthread_t iThreadId = 0;
+    pthread_t threadId = 0;
     struct sockaddr_storage server_address;
     int server_address_type;
     int ret;
-	fd_set read_fds;
-    int max_fd;
+	
 	
     // Command line argument parsing and initialization...
-    port_number = atoi(argv[3]);
-    pcIpAddress = argv[2];
-    pcUserName = argv[1];
+    serv_port = atoi(argv[3]);
+    serv_ipaddr = argv[2];
+    client_username = argv[1];
 
     // Determine the server address type (IPv4 or IPv6)
-    server_address_type = get_server_address_type(pcIpAddress);
+    server_address_type = get_server_address_type(serv_ipaddr);
 
     if (server_address_type == -1) {
-        printf("Invalid server address: %s\n", pcIpAddress);
+        printf("Invalid server address: %s\n", serv_ipaddr);
         return 1;
     }
 
-    // Print user information...
-    printf("CLIENT: User Name is %s\n", pcUserName);
-    printf("CLIENT: IP Address is %s (Type: %s)\n", pcIpAddress, (server_address_type == AF_INET) ? "IPv4" : "IPv6");
-    printf("CLIENT: Port number is %d\n", port_number);
+    // Print User and Server information
+    printf("CLIENT: User Name is %s\n", client_username);
+    printf("CLIENT: Server IP Address is %s (Type: %s)\n", serv_ipaddr, (server_address_type == AF_INET) ? "IPv4" : "IPv6");
+    printf("CLIENT: Server Port number is %d\n", serv_port);
 
     // Set up socket and connect...
     if (server_address_type == AF_INET) {
-        iSocket_fd = create_socket(true);
+        clientsock_fd = create_socket(true);
 		struct sockaddr_in ipv4_server;
         memset(&ipv4_server, 0, sizeof(struct sockaddr_in));
         ipv4_server.sin_family = AF_INET;
-        ipv4_server.sin_port = htons(port_number);
-		ret = inet_pton (AF_INET, pcIpAddress, &(ipv4_server.sin_addr));
+        ipv4_server.sin_port = htons(serv_port);
+		ret = inet_pton (AF_INET, serv_ipaddr, &(ipv4_server.sin_addr));
         if (ret < 0)
             perror ("ERROR: IP conversion failed");
 
         /* Connect to server */
-        ret = connect (iSocket_fd, (struct sockaddr *)&ipv4_server, sizeof(ipv4_server));
+        ret = connect (clientsock_fd, (struct sockaddr *)&ipv4_server, sizeof(ipv4_server));
         if (ret < 0)
             perror ("ERROR: Socket connection failed");
     } else if (server_address_type == AF_INET6) {
-        iSocket_fd = create_socket(false);
+        clientsock_fd = create_socket(false);
         struct sockaddr_in6 ipv6_server;
         memset(&ipv6_server, 0, sizeof(struct sockaddr_in6));
         ipv6_server.sin6_family = AF_INET6;
-        ipv6_server.sin6_port = htons(port_number);
-        ret = inet_pton(AF_INET6, pcIpAddress, &(ipv6_server.sin6_addr));
-		if (ret < 0)
-            perror ("ERROR: IP conversion failed");
+        ipv6_server.sin6_port = htons(serv_port);
+        ret = inet_pton(AF_INET6, serv_ipaddr, &(ipv6_server.sin6_addr));
+	if (ret < 0)
+            perror ("ERROR: IP conversion");
 
         /* Connect to server */
-        ret = connect (iSocket_fd, (struct sockaddr *)&ipv6_server, sizeof(ipv6_server));
+        ret = connect (clientsock_fd, (struct sockaddr *)&ipv6_server, sizeof(ipv6_server));
         if (ret < 0)
             perror ("ERROR: Socket connection failed");
     } else {
-		printf("Invalid server address: %s\n", pcIpAddress);
-        return 1;
+		printf("Invalid server address: %s\n", serv_ipaddr);
+        	return 1;
     }
 	
-	send_join_message(iSocket_fd, pcUserName);
+	send_join_message(clientsock_fd, client_username);
 	
 	FD_ZERO(&read_fds);
 	
 	FD_SET(STDIN_FILENO, &read_fds);      // Add standard input (keyboard) to the read_fds set
-    FD_SET(iSocket_fd, &read_fds);     // Add server socket to the read_fds set
+    FD_SET(clientsock_fd, &read_fds);     // Add server socket to the read_fds set
     
 
     pthread_attr_init(&sThreadAttr);
     pthread_attr_setdetachstate(&sThreadAttr, PTHREAD_CREATE_DETACHED);
 
-    int iRet = pthread_create((pthread_t*)&iThreadId, &sThreadAttr, 
-								(void *)&send_idle_message, 
-								(void*)&iSocket_fd);
+    ret = pthread_create((pthread_t*)&threadId, &sThreadAttr, 
+			(void *)&send_idle_message, 
+			(void*)&clientsock_fd);
+    if (ret != 0) {
+    	perror("ERROR: pthread_create failed");
+    	return EXIT_FAILURE; // Or handle the error as needed
+    }
+	
+	
 
 	while(1)
     {
-        max_fd = iSocket_fd;
+        max_fd = clientsock_fd;
         if (select (max_fd + 1, &read_fds, NULL, NULL, NULL) == -1)
         {
             perror("ERR: Select Error");
@@ -345,18 +349,17 @@ int main(int argc, char* argv[]) {
 
         if (FD_ISSET(0, &read_fds))
         {
-			//printf("The std in\n");
-			
-			handle_user_input(iSocket_fd);
+						
+			handle_user_input(clientsock_fd);
 		}
-		if (FD_ISSET(iSocket_fd, &read_fds))
+		if (FD_ISSET(clientsock_fd, &read_fds))
         {
 		
-        handle_server_messages(iSocket_fd);
+        handle_server_messages(clientsock_fd);
 		}
 		
 		FD_SET(STDIN_FILENO, &read_fds);      // Add standard input (keyboard) to the read_fds set
-		FD_SET(iSocket_fd, &read_fds);     // Add server socket to the read_fds set
+		FD_SET(clientsock_fd, &read_fds);     // Add server socket to the read_fds set
 	}
     return 0;
 }
