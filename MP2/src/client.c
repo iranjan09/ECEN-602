@@ -40,7 +40,7 @@ void send_chat_message(int socket_fd, const char* message) {
     chatMessage->sMsgHeader.uiVrsn = PROTOCOL_VERSION;
     chatMessage->sMsgHeader.uiType = SEND;
     chatMessage->sMsgHeader.uiLength = sizeof(sbcp_attribute_t) + strlen(message);
-	//printf("SEND MESSAGE\n");
+
     // SBCP Attribute - MESSAGE
     chatMessage->sMsgAttribute.uiType = MESSAGE;
     chatMessage->sMsgAttribute.uiLength = strlen(message);
@@ -57,17 +57,17 @@ void send_chat_message(int socket_fd, const char* message) {
     if (send_result < 0) {
         perror("ERROR: Write failed to send chat message");
     }
-	//printf("mESSAGE SENT\n");
+	
     free(chatMessage);
 }
 
 
 void handle_server_messages(int server_socket) {
-	//printf("server sent some\n");
+	
     sbcp_message_t* message = NULL;
     int recv_result = 0;
 
-    //while (1) {
+    
         message = (sbcp_message_t*)calloc(1, sizeof(sbcp_message_t));
         if (message == NULL) {
             perror("ERROR: Memory allocation for message failed");
@@ -118,14 +118,14 @@ void handle_server_messages(int server_socket) {
         }
 
         free(message);
-   // }
+   
 }
 
 void handle_user_input(int server_socket) {
     
     char chat_message[PAYLOAD_SIZE];
     unsigned int message_length;
-	//printf("The std inppp\n");
+	
             memset(chat_message, 0, PAYLOAD_SIZE);
             if (fgets(chat_message, PAYLOAD_SIZE, stdin) == NULL) {
                 perror("ERROR: Failed to read user input");
@@ -137,7 +137,7 @@ void handle_user_input(int server_socket) {
             if (message_length > 0 && chat_message[message_length - 1] == '\n') {
                 chat_message[message_length - 1] = '\0';
             }
-			//printf("iNPUT MESSAGE \n");
+			
             // Send the chat message to the server
             send_chat_message(server_socket, chat_message);
         
@@ -351,7 +351,7 @@ int main(int argc, char* argv[]) {
 		}
 		if (FD_ISSET(iSocket_fd, &read_fds))
         {
-			//printf("server sent some\n");
+		
         handle_server_messages(iSocket_fd);
 		}
 		
