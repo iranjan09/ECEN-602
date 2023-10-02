@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This project extends the functionality of Assignment 1 by implementing a Simple Broadcast Chat Protocol (SBCP) chat service consisting of a server and a client. The server manages a global chat session, allowing clients to join, leave, view members, send and receive messages, and detect idle clients. The assignment also includes bonus features such as IPV6 support and new message types (ACK, NAK, ONLINE, and OFFLINE).
+This project extends the functionality of Assignment 1 by implementing a Simple Broadcast Chat Protocol (SBCP) chat service consisting of a server and a client. The server manages a global chat session, allowing clients to join, leave, and send and receive messages. The assignment also includes bonus features such as IPV6 suppor, new message types (ACK, NAK, ONLINE, and OFFLINE) and and detect idle clients.
 
 ## Team Members
 
@@ -10,7 +10,7 @@ This project extends the functionality of Assignment 1 by implementing a Simple 
 - **UIN:** 530006593 
 - **Contributions:**  
   - Implemented server logic and SBCP protocol handling
-  - Added support for bonus features (IPV6, new message types)
+  - Added support for bonus features on server side(IPV6, new message types)
   - Created and executed test cases
   - Developed the report
       
@@ -18,28 +18,25 @@ This project extends the functionality of Assignment 1 by implementing a Simple 
 - **UIN:** 833002748
 - **Contributions:**
   - Implemented client logic and SBCP protocol handling
-  - Developed the Makefile and README.md
-  - Generated the initial ChatGPT code 
+  - Added support for bonus features on client side(IPV6, new message types)
+  - Developed the Makefile, README.md and part of Report.
+  - Generated the ChatGPT code 
 
 ## Files
 
 ### Server (server.c)
 
-- Start the server with the command: `echos <Port>`, specifying the listening port.
+- Start the server with the command: `server <IP Address> <Port> <Client number>`, specifying the listening port.
 - The server supports multiple simultaneous connections.
-- Clients can JOIN the chat session, SEND messages, and detect idle clients.
+- Server can Jlet client JOIN the chat session, SEND messages between them, and inform about detect idle clients.
 - The server handles ACK, NAK, ONLINE, and OFFLINE messages, providing a robust chat experience.
 
 ### Client (client.c)
 
-- Run the client using the command: `echo <IP Address> <Port>`, specifying the server's IP address and port.
+- Run the client using the command: `client <username> <IP Address> <Port>`, specifying the server's IP address and port.
 - Clients can JOIN the chat session, SEND messages, and detect idle clients.
-- The client gracefully exits upon user input (e.g., Control-D), sending OFFLINE messages to the server.
-
-### `common.c`
-
-- Contains common functions shared between the server and client.
-- Includes functions for reading and writing data on sockets, as well as SBCP message handling.
+- The client handles ACK, NAK, FWD messages from the server.
+- The client can handle both user input and server messages simulataneously.
 
 ### `common.h`
 
@@ -60,9 +57,9 @@ This project extends the functionality of Assignment 1 by implementing a Simple 
 
 3. Compile the code and generate the binaries: `make -f Makefile`.
 
-4. Start the server with the command: `./echos <Port>`, replacing `<Port>` with the desired listening port.
+4. Start the server with the command: `server <IP Address> <Port> <Client number>`, replacing `<IP Address>` and `<Port>` with the desired listening por and `<Client number>` with total clients supported.
 
-5. Launch the client with: `./echo <IP Address> <Port>`, providing the server's IP address and port.
+5. Launch the client with: `./client <Client Username> <Server IP Address> <Server Port>`, providing the server's IP address and port and Client Username.
 
 ## ChatGPT Code Enhancement
 
