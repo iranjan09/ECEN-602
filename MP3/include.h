@@ -59,6 +59,7 @@ typedef struct tftp_err_{
     	uint16_t opCode;
     	uint16_t err_code;
     	uint8_t err_data[MAX_BUF];
+		
 }tftp_err_t;
 
 #define NETASCII 1
