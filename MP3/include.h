@@ -47,7 +47,7 @@ union mess_recv {
 	
 	struct {
     	uint16_t opCode;
-    	char file_mode[MAX_BUF];
+    	uint8_t file_mode[MAX_BUF];
 	}tftp_req;
 
 	struct {
@@ -58,7 +58,7 @@ union mess_recv {
 	struct {
     	uint16_t opCode;
     	uint16_t block_num;
-    	char data[MAX_BUF];
+    	uint8_t data[MAX_BUF];
 	}tftp_data;
 
 	struct {
