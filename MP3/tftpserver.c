@@ -2,9 +2,9 @@
 
 void handle_zombie(int sigtemp_fd)
 {
+	//wait on zombie process
     wait(NULL);
 }
-
 
 // From UNP, vol 1, 1st Ed, p. 499]
 FILE * temp_netascii_file(FILE *fd, char * file_net){
@@ -43,6 +43,7 @@ FILE * temp_netascii_file(FILE *fd, char * file_net){
 }
 
 ssize_t transmitData(int server_fd, mess_recv_t * msg, size_t len, struct sockaddr_in *addr, socklen_t socklen){
+	//Utilize sendto function
 	ssize_t sent = sendto(server_fd, msg, len, 0, (struct sockaddr *) addr, socklen);
 	if(sent < 0)
 	{
@@ -51,21 +52,31 @@ ssize_t transmitData(int server_fd, mess_recv_t * msg, size_t len, struct sockad
 	return sent;
 }
 
+ssize_t send_tftp_ack(int sock_fd, struct sockaddr_in * addr, socklen_t socklen, uint16_t block_num)
+{
+	mess_recv_t ack;
+	//Create ack packet
+	ack.opCode = htons(ACK_EVENT);
+	ack.tftp_ack.block_num = htons(block_num);
+	
+	return transmitData(sock_fd, &ack, sizeof(ack.tftp_ack), addr, socklen);
+}
+
 ssize_t send_tftp_data(int sock_fd, struct sockaddr_in *addr, socklen_t socklen, uint16_t block_num, int mode, uint8_t *data, ssize_t data_length) {
     
-    // Initialize a TFTP data message
+    //TFTP data message
     mess_recv_t data_message;
 	
 	char msg[MAX_BUF];	
 	int tot = 0;
-	int extra = 0;
+	int extra = 0;//for future
 		
 	memcpy(msg, data, data_length);
 	tot = extra + data_length;
-	
+	//Create data packet
     data_message.opCode = htons(DATA_EVENT);
     data_message.tftp_data.block_num = htons(block_num);
-	
+	//Copy data
     memcpy(data_message.tftp_data.data, msg, tot);
 	return transmitData(sock_fd, &data_message, tot+4, addr, socklen);
 }
@@ -76,8 +87,10 @@ ssize_t send_tftp_error(int sock_fd, int ec, char * error, struct sockaddr_in * 
 	if(strlen(error) >= MAX_BUF){
 		return 0;
 	}
+	//Create error packet
 	err_msg.tftp_err.opCode = htons(ERR_EVENT);
 	err_msg.tftp_err.err_code = htons(ec);
+	//Copy error data
 	strcpy((char *)err_msg.tftp_err.err_data, error);
 	
 	return transmitData(sock_fd, &err_msg, strlen(error)+5, addr, socketlen);
@@ -85,7 +98,9 @@ ssize_t send_tftp_error(int sock_fd, int ec, char * error, struct sockaddr_in * 
 
 
 ssize_t tftp_recv(int sockfd, struct sockaddr_in *cli_addr, socklen_t * socklen, mess_recv_t *recv_buf){
+	//Receive from the client
 	ssize_t msglen = recvfrom(sockfd, recv_buf, sizeof(*recv_buf), 0, (struct sockaddr *) cli_addr, socklen);
+	//Incorrect message received
 	if(msglen < 0 && errno !=EAGAIN){
 		perror("Error in tftp receive: ");
 	}
@@ -97,24 +112,24 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
     ssize_t read_len, recvlen;
     char *filename, *null_terminator_position, *transfer_mode;
 	FILE *file_descriptor, *temporary_file_fd;
-    struct timeval timeout;
-	uint16_t block_number = 0;
-	//uint16_t recv_opCode;
-    int mode = 0, retryAttempts, flag = 0;    
+    struct timeval timeout;//for timeout
+	uint16_t block_number = 0;// which ack seq at
+	int mode = 0, retryAttempts, flag = 0;    
     char temp_file[50];
 	int server_fd;
-	uint8_t data_buffer[512];
+	uint8_t data_buffer[512];//data to send
 	mess_recv_t client_msg;
 	
-	
+	//Create child socket
     if ((server_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
         perror("socket creation failed. Exit!");
         exit(EXIT_FAILURE);
     }
-
+	//Initialize timer values
     timeout.tv_usec = 0;
     timeout.tv_sec = TIMEOUT;
 
+	//Add timer to socket
     if (setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
         perror("Setting socket timeoit failed");
         exit(EXIT_FAILURE);
@@ -131,20 +146,22 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
 	// Check if the null terminator was found
 	if (*null_terminator_position != '\0') {
         printf("Requested invalid file name or mode incorrect\n");
+		//Send error to client
 		send_tftp_error(server_fd, UNDEFINED, "Filename invalid or transfermode incorrect", cli_addr, socket_len);
         exit(EXIT_FAILURE);
     }
 	
-	//Find the mode
+	//Find the transfer mode
 	transfer_mode = strchr(filename, '\0') + 1;
  
+	//Got ahead error
     if (transfer_mode > null_terminator_position) {
         perror("Transfer mode not given");
 		send_tftp_error(server_fd, UNDEFINED, "Filename invalid or transfermode incorrect", cli_addr, socket_len);
         exit(EXIT_FAILURE);
     }
 	
-	
+	//Set the mode based on the string
 	if (strcasecmp(transfer_mode, "netascii") == 0)
         mode = NETASCII;
     else if (strcasecmp(transfer_mode, "octet") == 0)
@@ -154,15 +171,16 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
 
     // Print the parsed filename and mode
     printf("Requested file: %s, Mode: %s\n", filename, transfer_mode);
-	
-
+	//Mode does not match NETASCII/OCTET mode
 	if (mode == 0) {
 		printf("Client %s:%u sent invalid mode\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+		//send to client the error
 		send_tftp_error(server_fd, UNDEFINED, "Transfer mode invalid", cli_addr, socket_len);
 		exit(EXIT_FAILURE);
 	}
-	
+	//open the file for read/write
 	file_descriptor = fopen(filename, opCode == RRQ_EVENT ? "r" : "w");
+	// file not getting created!!
     if (file_descriptor == NULL)
     {
         printf("File does not exist\n");
@@ -171,40 +189,132 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
     }
 
 	printf("File name %s in  transfer mode %d %s request by %s:%u! \n", filename, mode,
-            opCode == RRQ_EVENT ? "read" : "write", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+            opCode == RRQ_EVENT ? "reading" : "writing", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
 
     if (opCode == RRQ_EVENT)
     {
+		//Need to convert the file for NETASCII
         if (mode == NETASCII)
         {
             temporary_file_fd = temp_netascii_file(file_descriptor,temp_file);
+			//Close the file to assign
             fclose (file_descriptor);
             file_descriptor = temporary_file_fd;
         }
         while (!flag)
         {
+			//Start reading
             read_len = fread(data_buffer, 1, sizeof(data_buffer), file_descriptor);
+			//Move to next block to read
             block_number++;
 
             if (read_len < MAX_BUF)
             {
-                flag = 1;
+                flag = 1;  //Done reading
             }
-
-            retryAttempts = RETRY_LIMIT;
+		
+			//Try for 10 attempts
+			retryAttempts = RETRY_LIMIT;
             while (retryAttempts)
             {
+				//Send data to client
                 if (send_tftp_data(server_fd, cli_addr, socket_len, block_number, mode, data_buffer, read_len) < 0)
                 {
+					//Failed
                     printf("Client %s:%u TFTP session terminated\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
                     exit(EXIT_FAILURE);
                 }
-
+				
+				//ACK/ERROR receive
                 recvlen = tftp_recv(server_fd, cli_addr, &socket_len, &client_msg);
 
+				//Frame size invalid
                 if (recvlen >= 0 && recvlen < MIN_FRAME_LEN)
                 {
 					printf("Invalid request from %s:%d. Try again!\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+					//Send error to client
+					send_tftp_error(server_fd, UNDEFINED, "Frame size is invalid", cli_addr, socket_len);
+                    exit(EXIT_FAILURE);
+                }
+
+                if (recvlen >= MIN_FRAME_LEN)
+                {
+                    break;
+                }
+				//Erroneous packet
+                if (errno != EAGAIN)
+                {
+                    printf("Client %s:%u TFTP session terminated.\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                    exit(EXIT_FAILURE);
+                }
+				
+				
+                printf("Client %s:%u not responding. Trying again.\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+				//Decrement retries
+                retryAttempts--;
+            }
+
+			//10 attempts failed close child process
+            if (retryAttempts == 0)
+            {
+                printf("Retries failed. Transfer ended.\n");
+                exit(EXIT_FAILURE);
+            }
+			
+			//Client send error dump it and exit
+            if (ntohs(client_msg.opCode) == ERR_EVENT)
+            {
+                printf("Client %s:%u sent error event message %u:%s\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port), ntohs(client_msg.tftp_err.err_code),
+                        client_msg.tftp_err.err_data);
+                exit(EXIT_FAILURE);
+            }
+
+			//Unknown Opcode from client
+            if (ntohs(client_msg.opCode) != ACK_EVENT)
+            {
+                printf("Client %s:%u sent unknown opcode\n",inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                send_tftp_error(server_fd, UNDEFINED, "Unknown Opcode. try again", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
+			
+			//Ack sequence number not expected
+            if (ntohs(client_msg.tftp_ack.block_num) != block_number) 
+            {
+                printf("Client %s:%u ACK number sent is high\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+				//Send error to client about invalid ACK
+                send_tftp_error(server_fd, UNDEFINED, "ACK Invalid", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
+        }
+    } else if (opCode == WRQ_EVENT) {
+		//reinitialize the variables for WRQ
+		block_number = 0;
+        flag = 0;
+        recvlen = 0;
+        mess_recv_t read_write_msg;
+         
+		//Send Ack to client
+        if (send_tftp_ack(server_fd, cli_addr, socket_len, block_number) < 0)
+        { 
+			//Client terminated session exit child process
+            printf("Client %s:%u session ended\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+            exit(EXIT_FAILURE);
+        }
+
+        while (!flag)
+        {
+			//Try for 10 attempts
+            retryAttempts = RETRY_LIMIT;
+            while(retryAttempts)
+            {
+				//Client req handle
+                recvlen = tftp_recv(server_fd, cli_addr, &socket_len, &read_write_msg);
+				
+				//Frame size of invalid length received
+                if (recvlen >= 0 && recvlen < MIN_FRAME_LEN)
+                {
+					printf("Invalid request from client %s:%d. Try again!\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+					//Send to Client also
 					send_tftp_error(server_fd, UNDEFINED, "Frame size is invalid", cli_addr, socket_len);
                     exit(EXIT_FAILURE);
                 }
@@ -216,43 +326,87 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
 
                 if (errno != EAGAIN)
                 {
-                    printf("Client %s:%u TFTP session terminated.\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                    printf("Client %s:%u TFTP session terminated\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
                     exit(EXIT_FAILURE);
                 }
-
-                printf("Client %s:%u not responding. Trying again.\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+				
+				//Send ack to client
+                recvlen = send_tftp_ack(server_fd, cli_addr, socket_len, block_number);
+				
+				//Client responded in negative
+                if (recvlen < 0)
+                {
+                    printf("Client %s:%u TFTP session terminated\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                    exit(EXIT_FAILURE);
+                }
+				//Retrying again
                 retryAttempts--;
             }
-
+			
+			//Tried 10 times exit child process if not successful
             if (retryAttempts == 0)
             {
                 printf("Retries failed. Transfer ended.\n");
                 exit(EXIT_FAILURE);
             }
 			
-            if (ntohs(client_msg.opCode) == ERR_EVENT)
+			//Move to next block
+            block_number++;
+
+            if (recvlen < sizeof(read_write_msg.tftp_data))				
             {
-                printf("Client %s:%u sent error event message %u:%s\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port), ntohs(client_msg.tftp_err.err_code),
-                        client_msg.tftp_err.err_data);
-                exit(EXIT_FAILURE);
+                flag = 1; //End transmission last block
             }
 
-            if (ntohs(client_msg.opCode) != ACK_EVENT)
-            {
-                printf("Client %s:%u sent unknown opcode\n",inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
-                send_tftp_error(server_fd, 0, "Unknown Opcode. try again", cli_addr, socket_len);
-                exit(EXIT_FAILURE);
-            }
-
-            if (ntohs(client_msg.tftp_ack.block_num) != block_number) 
+			//Out of sequence ack received
+            if (ntohs(read_write_msg.tftp_ack.block_num) != block_number)
             {
                 printf("Client %s:%u ACK number sent is high\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
-                send_tftp_error(server_fd, 0, "ACK Invalid", cli_addr, socket_len);
+				//send error to client
+                send_tftp_error(server_fd, UNDEFINED, "ACK Invalid", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
+			
+			//Opcode not matching expected, close child
+            if (ntohs(read_write_msg.opCode) != DATA_EVENT)
+            {
+               printf("Client %s:%u sent unknown opcode\n",inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                send_tftp_error(server_fd, UNDEFINED, "Unknown Opcode. try again", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
+			
+			//Client sent error message, dump and exit
+            if (ntohs(read_write_msg.opCode) == ERR_EVENT)
+            {
+                printf("Client %s:%u sent error event message %u:%s\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port), 
+																		ntohs(read_write_msg.tftp_err.err_code),
+																		read_write_msg.tftp_err.err_data);
+                exit(EXIT_FAILURE);
+            }
+			
+			// Write to the file
+            recvlen = fwrite(read_write_msg.tftp_data.data, 1, recvlen - MIN_FRAME_LEN, file_descriptor);
+			
+			//Write failed
+            if (recvlen < 0)
+            {
+                perror("Server:Write error-)");
+                exit(EXIT_FAILURE);
+            }
+			
+			//After writing send ack
+            recvlen = send_tftp_ack(server_fd, cli_addr, socket_len, block_number);
+			
+			//Client did not send ack
+            if (recvlen < 0)
+            {
+				printf("Client %s:%u TFTP session terminated\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
                 exit(EXIT_FAILURE);
             }
         }
     }
-	
+		
+	//Done transferring, do cleanup
 	printf("TFTP data sent successfully to %s:%u!\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
     fclose(file_descriptor);
     if(temp_file != NULL){
@@ -274,7 +428,7 @@ int main(int argc, char *argv[]) {
 	int sockfd;
     ssize_t recvlen;
     struct sockaddr_in serv_addr, cli_addr;
-    //int portno = atoi(argv[2]);
+    
 	uint16_t opCode, portno = 0;
 	socklen_t socklen = sizeof(serv_addr);
 	mess_recv_t recv_buf;
