@@ -21,12 +21,14 @@
 #include <errno.h>
 
 #define MAX_BUF 512
-#define QUEUE_SIZE 50
-#define BUFFER_SIZE 20
 
-#define MAX_RETRIES 10
+#define BUFSIZE 20
+
+#define RETRY_LIMIT 10
 
 #define TIMEOUT 4
+
+#define MIN_FRAME_LEN 4
 
 
 typedef enum tftp_event_ {
@@ -38,29 +40,45 @@ typedef enum tftp_event_ {
 	MAX_EVENT
 }tftp_event_type;
 
-typedef struct  tftp_req_{
+typedef union mess_recv mess_recv_t;
+union mess_recv {
+	
+	uint16_t opCode;
+	
+	struct {
     	uint16_t opCode;
     	char file_mode[MAX_BUF];
-}tftp_req_t;
+	}tftp_req;
 
-
-typedef struct tftp_ack_{
+	struct {
     	uint16_t opCode;
     	uint16_t block_num;
-}tftp_ack_t;
+	}tftp_ack;
 
-typedef struct tftp_data_{
+	struct {
     	uint16_t opCode;
     	uint16_t block_num;
     	char data[MAX_BUF];
-}tftp_data_t;
+	}tftp_data;
 
-typedef struct tftp_err_{
+	struct {
     	uint16_t opCode;
     	uint16_t err_code;
     	uint8_t err_data[MAX_BUF];
-		
-}tftp_err_t;
+	}tftp_err;
+};	
+
+typedef enum error_event_ {
+  UNDEFINED = 0,
+  FILE_NOT_FOUND,
+  ACCESS_VIOLATION,
+  DISK_FULL,
+  ILLEGAL_OP,
+  UNKNOWN_TID,
+  FILE_EXISTS,
+  NO_SUCH_USER,
+  MAX_ERROR
+} error_event_t;
 
 #define NETASCII 1
 #define OCTET 2
