@@ -55,9 +55,13 @@ ssize_t send_tftp_data(int sock_fd, struct sockaddr_in *addr, socklen_t socklen,
     
     // Initialize a TFTP data message
     mess_recv_t data_message;
-	char msg[MAX_BUF];
-	int tot = data_length;
+	
+	char msg[MAX_BUF];	
+	int tot = 0;
+	int extra = 0;
+		
 	memcpy(msg, data, data_length);
+	tot = extra + data_length;
 	
     data_message.opCode = htons(DATA_EVENT);
     data_message.tftp_data.block_num = htons(block_num);
@@ -80,42 +84,6 @@ ssize_t send_tftp_error(int sock_fd, int ec, char * error, struct sockaddr_in * 
 }
 
 
-int recv_buf_parse(mess_recv_t *rec_buf, ssize_t length, char *filename, int *mode) {
-    
-	char *null_terminator_position, *transfer_mode;
-	// Cast the buffer to a the request structure to get filename
-    filename = (char *)rec_buf->tftp_req.file_mode;
-
-    // Locate the null terminator (0) in the trailing buffer to separate filename and mode
-    null_terminator_position = &filename[length - 3];
-	
-	// Check if the null terminator was found
-	if (*null_terminator_position != '\0') {
-        perror("Requested invalid file name or mode incorrect\n");
-        return -1;
-    }
-	
-	//Find the mode
-	transfer_mode = strchr(filename, '\0') + 1;
- 
-    if (transfer_mode > null_terminator_position) {
-        perror("Transfer mode not given");
-        return -1;
-    }
-	
-	if (strcasecmp(transfer_mode, "netascii") == 0)
-        *mode = NETASCII;
-    else if (strcasecmp(transfer_mode, "octet") == 0)
-        *mode = OCTET;
-	else
-		*mode = 0;
-
-    // Print the parsed filename and mode
-    printf("Requested file: %s, Mode: %s\n", filename, transfer_mode);
-	
-    return 0;
-}
-
 ssize_t tftp_recv(int sockfd, struct sockaddr_in *cli_addr, socklen_t * socklen, mess_recv_t *recv_buf){
 	ssize_t msglen = recvfrom(sockfd, recv_buf, sizeof(*recv_buf), 0, (struct sockaddr *) cli_addr, socklen);
 	if(msglen < 0 && errno !=EAGAIN){
@@ -127,11 +95,11 @@ ssize_t tftp_recv(int sockfd, struct sockaddr_in *cli_addr, socklen_t * socklen,
 void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mess_recv_t *buf, ssize_t len, uint16_t opCode)
 {
     ssize_t read_len, recvlen;
-    char *filename;
+    char *filename, *null_terminator_position, *transfer_mode;
 	FILE *file_descriptor, *temporary_file_fd;
     struct timeval timeout;
 	uint16_t block_number = 0;
-	uint16_t recv_opCode;
+	//uint16_t recv_opCode;
     int mode = 0, retryAttempts, flag = 0;    
     char temp_file[50];
 	int server_fd;
@@ -152,15 +120,42 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
         exit(EXIT_FAILURE);
     }
 
-    printf("Client %s:%u reconnected to TFTP server\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+    printf("Client %s:%u Connected to TFTP server\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
 	
-	//Extract filename and mode from the buffer
-	if (recv_buf_parse(buf, len, filename, &mode) != 0) {
-		printf("Parsing of received buffer failed\n");
+	// Cast the buffer to a the request structure to get filename
+    filename = (char *)buf->tftp_req.file_mode;
+
+    // Locate the null terminator (0) in the trailing buffer to separate filename and mode
+    null_terminator_position = &filename[len - 3];
+	
+	// Check if the null terminator was found
+	if (*null_terminator_position != '\0') {
+        printf("Requested invalid file name or mode incorrect\n");
 		send_tftp_error(server_fd, UNDEFINED, "Filename invalid or transfermode incorrect", cli_addr, socket_len);
-		exit(EXIT_FAILURE);
-	}
+        exit(EXIT_FAILURE);
+    }
 	
+	//Find the mode
+	transfer_mode = strchr(filename, '\0') + 1;
+ 
+    if (transfer_mode > null_terminator_position) {
+        perror("Transfer mode not given");
+		send_tftp_error(server_fd, UNDEFINED, "Filename invalid or transfermode incorrect", cli_addr, socket_len);
+        exit(EXIT_FAILURE);
+    }
+	
+	
+	if (strcasecmp(transfer_mode, "netascii") == 0)
+        mode = NETASCII;
+    else if (strcasecmp(transfer_mode, "octet") == 0)
+        mode = OCTET;
+	else
+		mode = 0;
+
+    // Print the parsed filename and mode
+    printf("Requested file: %s, Mode: %s\n", filename, transfer_mode);
+	
+
 	if (mode == 0) {
 		printf("Client %s:%u sent invalid mode\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
 		send_tftp_error(server_fd, UNDEFINED, "Transfer mode invalid", cli_addr, socket_len);
@@ -174,8 +169,8 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
         send_tftp_error(server_fd, FILE_NOT_FOUND, "File not found", cli_addr, socket_len);
         exit(EXIT_FAILURE);
     }
-	
-	printf("File name %s in  transfer mode %d %s by %s:%u! \n", filename, mode,
+
+	printf("File name %s in  transfer mode %d %s request by %s:%u! \n", filename, mode,
             opCode == RRQ_EVENT ? "read" : "write", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
 
     if (opCode == RRQ_EVENT)
@@ -235,30 +230,26 @@ void handle_tftp_request(struct sockaddr_in *cli_addr, socklen_t socket_len, mes
                 exit(EXIT_FAILURE);
             }
 			
-		    recv_opCode = ntohs(client_msg.opCode);
-			
-			if (recv_opCode != ERR_EVENT && opCode!= ACK_EVENT)
+            if (ntohs(client_msg.opCode) == ERR_EVENT)
             {
-                printf("Client %s:%u sent unknown message\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
-                send_tftp_error(server_fd, UNDEFINED, "Unknown Message", cli_addr, socket_len);
-                exit(EXIT_FAILURE);
-            }
-			
-
-            if (opCode == ERR_EVENT) {
-				printf("Client %s:%u has send error message %u:%s\n", inet_ntoa(cli_addr->sin_addr),ntohs(cli_addr->sin_port), ntohs(client_msg.tftp_err.err_code),
+                printf("Client %s:%u sent error event message %u:%s\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port), ntohs(client_msg.tftp_err.err_code),
                         client_msg.tftp_err.err_data);
                 exit(EXIT_FAILURE);
             }
 
-            if (opCode == ACK_EVENT)
-		    {
-				if (ntohs(client_msg.tftp_ack.block_num) != block_number) {
-					printf("Client %s:%u send invalid block ack\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
-					send_tftp_error(server_fd, UNDEFINED, "Server:Acknowledgment number invalid", cli_addr, socket_len);
-					exit(EXIT_FAILURE);
-				}
-	        }
+            if (ntohs(client_msg.opCode) != ACK_EVENT)
+            {
+                printf("Client %s:%u sent unknown opcode\n",inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                send_tftp_error(server_fd, 0, "Unknown Opcode. try again", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
+
+            if (ntohs(client_msg.tftp_ack.block_num) != block_number) 
+            {
+                printf("Client %s:%u ACK number sent is high\n", inet_ntoa(cli_addr->sin_addr), ntohs(cli_addr->sin_port));
+                send_tftp_error(server_fd, 0, "ACK Invalid", cli_addr, socket_len);
+                exit(EXIT_FAILURE);
+            }
         }
     }
 	
@@ -283,10 +274,22 @@ int main(int argc, char *argv[]) {
 	int sockfd;
     ssize_t recvlen;
     struct sockaddr_in serv_addr, cli_addr;
-    int portno = atoi(argv[2]);
-	uint16_t opCode;
+    //int portno = atoi(argv[2]);
+	uint16_t opCode, portno = 0;
 	socklen_t socklen = sizeof(serv_addr);
 	mess_recv_t recv_buf;
+
+
+	if (argc > 2) {
+		if (sscanf(argv[2], "%hu", &portno)) {
+            portno = htons(portno);
+        }
+        else
+        {
+            fprintf(stderr, "Server: Error Port Number Invalid\n");
+            exit(-1);
+        }
+    }
 
     sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sockfd < 0) {
@@ -297,7 +300,7 @@ int main(int argc, char *argv[]) {
     memset((char *)&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv_addr.sin_port = htons(portno);
+    serv_addr.sin_port = portno;
 
 
     if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
@@ -305,9 +308,9 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    printf("SERVER: TFTP Server Initialized, waiting for clients\n");
+	signal(SIGCHLD, (void *)handle_zombie);
 	
-    signal(SIGCHLD, (void *)handle_zombie);
+    printf("SERVER: TFTP Server Initialized, waiting for clients\n");
     
     while (1) {
         recvlen = tftp_recv(sockfd, &cli_addr, &socklen, &recv_buf);
