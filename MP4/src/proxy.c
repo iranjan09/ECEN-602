@@ -33,7 +33,7 @@ int Dump_Cache() {
     }
 	return 0;
 }
-
+//Todo: Function long, maybe have two separate functions one for add and other for update.
 int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
 	
 	int entries = 0;
@@ -99,6 +99,21 @@ int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
 	return 0;
 }
 
+//Serach based on URL     
+int Cache_FindElement(char *target) {
+	
+	int entry = 0;
+	//Walk throigh the entries
+	for (entry = 0; entry < MAX_NUM_CACHE; entry++) {
+		if (strcmp(Cached_Entries[entry].URL, target) == 0) {
+			//Found entry, return its index
+			return entry;
+		}
+	}
+	
+	return -1;
+}
+
 int IsCacheEntryFresh (int entry) {
 	
 	time_t currentTime = time(NULL);
@@ -128,21 +143,6 @@ int IsCacheEntryFresh (int entry) {
     //Expired entry return -1, set variable
     return -1; 
 }	
-
-//Serach based on URL     
-int Cache_FindElement(char *target) {
-	
-	int entry = 0;
-	//Walk throigh the entries
-	for (entry = 0; entry < MAX_NUM_CACHE; entry++) {
-		if (strcmp(Cached_Entries[entry].URL, target) == 0) {
-			//Found entry, return its index
-			return entry;
-		}
-	}
-	
-	return -1;
-}
 
 //Connect to remote host
 int connectHost(char *hostname) {
@@ -175,28 +175,31 @@ int connectHost(char *hostname) {
 	return websocket;
 }
 
-
+//Parse response from remote page
 int parseMessageBody(int sockfd, char *messageBuffer) {
 	
     int totalBytesRead = 0;
+	//init to 1
     int bytesRead = 1;
     char dataBuffer[MAX_MESSAGE_LENGTH] = {0};
-
+	
     while (bytesRead > 0) {
         memset(dataBuffer, 0, sizeof(dataBuffer));
+		//Start reading the socket
         bytesRead = read(sockfd, dataBuffer, MAX_MESSAGE_LENGTH);
 
         if (bytesRead <= 0) {
-            // Check for errors or end of input
+            //end of read or error,break
             break;
         }
 
-        // Concatenate the data to the message buffer
+        // Add data to received buffer
         strcat(messageBuffer, dataBuffer);
         totalBytesRead += bytesRead;
 
-        // Check if the last character in the buffer is a null terminator
+        //REached EoF break, remove NULL part 
         if (dataBuffer[bytesRead - 1] == EOF) {
+			//ToDo: Use strncpy. ---DONE
 			strncpy(messageBuffer,messageBuffer,(strlen(messageBuffer)-1));
             totalBytesRead--;
             break;
@@ -220,38 +223,43 @@ int start_proxy(int sockfd) {
   
 	recv_buf = (char *)calloc(MAX_MESSAGE_LENGTH, sizeof(char));
 
+	//Read the socket, free the memory	
 	if (read(sockfd, recv_buf, MAX_MESSAGE_LENGTH) < 0) {
 		perror("Server Error: Unable to read meessage from client");
 		free(recv_buf);
 	}
   
 	printf("Server: Received request for page:\n%s", recv_buf);
- 
+ 	//Parse the request
 	sscanf(recv_buf, "%s %s %s", reqtype, target, httpVersion);
-  
+
+	//Check if entry already present
 	cachedEntry = Cache_FindElement(target);
+	//If entry present, is it expired
 	if (cachedEntry != -1)
 		isNotExpired = IsCacheEntryFresh(cachedEntry);
- 
+
+	//if entry present and not expired just update
 	if (cachedEntry != -1 && isNotExpired) {
 		printf("Server: Client request for url: %s is present in cache and is not expired\n", target);
     
-		// Update the cache entry with fresh data
+		// Just update the entry with new access time
 		UpdateCacheEntry(target, NULL, 0, cachedEntry);
     
-		// Allocate memory for data to send to the client
+		// Calloc memory to send to client
 		dataToSend = (char*)calloc(strlen(Cached_Entries[cachedEntry].content) + 1, sizeof(char));
     
-		// Copy data from the cache to dataToSend
+		// Copy the content
 		memcpy(dataToSend, Cached_Entries[cachedEntry].content, strlen(Cached_Entries[cachedEntry].content));
 	} else {
-        // Either URL is not cached or it is stale
+        //Entry not cached or expired
 		memset(path, 0, 256);
 		memset(host, 0, 64);  
-		
+		//Parse the URL
 		memcpy(&urlSegment[0], &target[0], 256);
 		targetParser(urlSegment, host, &wport, path);
-		
+		//Connect to remote server
+		//Todo: free recv_buf
 		if ((websocket = connectHost (host)) == -1)
 			perror ("Server ERROR: Proxy cannot connect to host");
 		
@@ -259,11 +267,12 @@ int start_proxy(int sockfd) {
 		
 		if (cachedEntry != -1) {
 			
-			// If cache entry exists but has expired
+			// Entry cached but expired
 			printf ("Server: URL %s in cache has expired.\n", target);
 			
 			char ifModifiedSince[60];
-			
+			//Check for modificatons
+			//From the MP4 problem
 			if (strcmp(Cached_Entries[cachedEntry].Expires, "") != 0 && strcmp(Cached_Entries[cachedEntry].Last_Modified, "") != 0)
 				snprintf(ifModifiedSince, sizeof(ifModifiedSince), "If-Modified_Since: %s", Cached_Entries[cachedEntry].Expires);
 			else if (strcmp(Cached_Entries[cachedEntry].Expires, "") == 0 && strcmp(Cached_Entries[cachedEntry].Last_Modified, "") == 0) 
@@ -272,46 +281,61 @@ int start_proxy(int sockfd) {
 				snprintf(ifModifiedSince, sizeof(ifModifiedSince), "If-Modified_Since: %s", Cached_Entries[cachedEntry].Last_Modified);
 			else if (strcmp(Cached_Entries[cachedEntry].Last_Modified, "") == 0) 
 				snprintf(ifModifiedSince, sizeof(ifModifiedSince), "If-Modified_Since: %s", Cached_Entries[cachedEntry].Expires);
-			
+			//gENEERATE the msg to  be sent
 			snprintf(msg_gen, MAX_MESSAGE_LENGTH, "%s %s %s\r\nHost: %s\r\nUser-Agent: HTTPTool/1.0\r\n%s\r\n\r\n", reqtype, path, httpVersion, host, ifModifiedSince);
 			
 			printf("GET Generated: \n%s", msg_gen);
-			
+			//write to socket
 			write(websocket, msg_gen, MAX_MESSAGE_LENGTH); 
-			
+			//Todo: calloc might be better
 			response = (char *) malloc (100000);
-			
+			//parse response from webserver
 			bytesRead = parseMessageBody(websocket, response);
+			//Todo:same as above
 			dataToSend = (char *) malloc(strlen(response));
-			
+
+			//page same, just send cache entry
 			if (strstr(response, "304 Not Modified") != NULL) {
+				//ToDo: print it.---DONE
 				printf("Received '304 Not Modified' response. Sending cached file instead.\n");
 				memcpy(dataToSend, Cached_Entries[cachedEntry].content, strlen(Cached_Entries[cachedEntry].content)); 
+				//just update access time
 				UpdateCacheEntry(target, NULL, 0, cachedEntry);
 			} else {
+				//add print.---DONE
 				printf("Server: File stored in cache was modified, update it\n");
+				//update data in cache
 				memcpy(dataToSend, response, strlen(response)); 
 				UpdateCacheEntry(target, NULL, 0, cachedEntry);
-				// move to head (LRU) of the queue
+				//clear last entry
 				Cached_Entries[--cache_count] = Clear_Entry;
-				// Popping LRU
-				UpdateCacheEntry(target, response, 1, 0);     // treat like a new entry as it was modified
+				// now treat as new one
+				//Todo: use a flag for new entry, 1, 0 is confusing
+				UpdateCacheEntry(target, response, 1, 0);     
 			}
 		}else {
-			// document is not cached
+			//Target not in cached space get it 
 			printf ("Server: Client requested url is not present in cache. Fetch it.\n");
+			//just utilize client request
 			memset(client_req, 0, MAX_MESSAGE_LENGTH);
 			snprintf(client_req, MAX_MESSAGE_LENGTH, "%s %s %s\r\nHost: %s\r\nUser-Agent: HTTPTool/1.0\r\n\r\n", reqtype, path, httpVersion, host);
 			printf("Server: Generated Request from Client: \n%s", client_req);
+			//ask for the page
 			write(websocket, client_req, MAX_MESSAGE_LENGTH); 
+			//Todo: Use calloc
 			response = (char *) malloc (100000);
+			//Parse to get the data			
 			bytesRead = parseMessageBody(websocket, response);
+			//Todo:same
 			dataToSend = (char *) malloc(strlen(response));
 			memcpy(dataToSend, response, strlen(response));
+			//neew entry add to cache
 			UpdateCacheEntry(target, response, 1, 0);
 		}
 	}
+	//Print all in cache
 	Dump_Cache();
+	//send to client
 	write(sockfd, dataToSend, strlen(dataToSend) + 1);
 	return 0;
 }
@@ -340,7 +364,7 @@ int main (int argc, char *argv[]) {
 		perror ("Proxy ERROR: Socket creation failed");
 
 	memset(&servaddr, 0, sizeof(servaddr));
-  //Init server
+    //Init server
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = inet_addr(server_ip); 
 	servaddr.sin_port = htons(server_port);
@@ -358,6 +382,7 @@ int main (int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+	//INit cache
   	memset(Cached_Entries, 0, MAX_NUM_CACHE * sizeof(struct cache_));
 
    	printf("\nProxy server is active and accepting connections.\n");
@@ -369,10 +394,11 @@ int main (int argc, char *argv[]) {
 			perror("Server Error: Connection accept failed");
 			continue; 
         }
-		
+		//Use thread to handle new connections
 		if (pthread_create(&thread, NULL, (void *)start_proxy, (void*)(intptr_t)new_fd) != 0) {
 			perror("Thread creation error");
             close(new_fd);
 		}
     }
+	//Do not end parent
 }
