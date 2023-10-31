@@ -1,25 +1,27 @@
 
 #include "include.h"
 
+//extract filename, not needed
 char *get_filename(char *str) {
     const char *separator = "/";
     const char *last_slash = strrchr(str, separator[0]);
-    
+    //Search for last slash and copy it
     if (last_slash != NULL) {
         return strdup(last_slash + 1);
     } else {
-        return strdup(str); // If there's no slash, the entire string is treated as the filename.
+        return strdup(str); 
     }
 }
 
 int main(int argc, char *argv[]) {
   	
-	
+	//Argument less than expected
 	if (argc != 4) {
         printf("Client ERROR: Please provide Proxy Server IP address, port number and URL\n");
 		printf("Usage: ./client <Proxy IP> <Port> <URL>");
         return 1;
     }
+	
 	char *server_proxy = argv[1], *f_begin, *file;
     char hostname[256] = {0}; 
     uint16_t port_number;
@@ -83,6 +85,7 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+	//send request to proxy
 	if((send(sockfd, request, strlen(request), 0)) == -1){
         perror("Client Error: Sending Failed:");
         exit(EXIT_FAILURE);
@@ -90,7 +93,7 @@ int main(int argc, char *argv[]) {
 	memset(buf, 0 , BUFFER_SIZE);
 	file = get_filename(path);
 	fp = fopen(hostname, "w");
-	
+	//response received
 	if ((msglen = recv(sockfd, buf, BUFFER_SIZE, 0)) <= 0) {
           perror("Client Error: Unable to receive from proxy:");
 		  fclose(fp);
@@ -114,7 +117,7 @@ int main(int argc, char *argv[]) {
 		printf("'404 Page Not Found' response. Save: %s\n", hostname);
     }
 	f_begin = strstr(buf, "\r\n\r\n");
-	//
+	//write to file
 	fwrite(f_begin+4, 1, strlen(f_begin)-4, fp);
 	//Close the file
 	fclose(fp);
