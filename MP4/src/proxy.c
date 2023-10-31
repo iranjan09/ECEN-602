@@ -1,72 +1,21 @@
 #include "include.h"
 
-
-int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
-	
-	int entries = 0;
-	if (newEntry == 1) {
-		// New entry
-		if (cache_count == MAX_NUM_CACHE){
-			Cached_Entries[0] = Clear_Entry;
-			// Popping LRU
-			for (entries = 0; entries < MAX_NUM_CACHE; entries++){
-				if (entries + 1!= MAX_NUM_CACHE)
-					Cached_Entries[entries] = Cached_Entries[entries+1];
-				else {
-					// Add new entry at the head (latest)
-					memset(&Cached_Entries[entries], 0, sizeof(struct cache_));
-					memcpy(Cached_Entries[entries].URL, target, 256);
-					Cached_Entries[entries].content = (char *) malloc(strlen(info));
-					memcpy(Cached_Entries[entries].content, info, strlen(info));
-					Header_parser("Expires:", info, Cached_Entries[entries].Expires);
-					Header_parser("Last-Modified:", info, Cached_Entries[entries].Last_Modified);
-					Header_parser("AccessDate:", info, Cached_Entries[entries].Access_Date);
-				}
-			}
-		} else {
-			Cached_Entries[cache_count] = Clear_Entry;
-			memcpy(Cached_Entries[cache_count].URL, target, 256); 
-			Cached_Entries[cache_count].content = (char *) malloc(strlen(info));
-			memcpy(Cached_Entries[cache_count].content, info, strlen(info));
-			Header_parser("Expires:", info, Cached_Entries[cache_count].Expires);
-			Header_parser("Last-Modified:", info, Cached_Entries[cache_count].Last_Modified);
-			Header_parser("AccessDate:", info, Cached_Entries[cache_count].Access_Date);
-
-			cache_count++;
-		}
-	} else {
-		struct cache_ temp_entry;
-		memset(&temp_entry, 0, sizeof(struct cache_));
-		temp_entry = Cached_Entries[entry];
-		for (entries = entry; entries < cache_count; entries++){
-			if (entries == cache_count-1)
-				break;
-			Cached_Entries[entries] = Cached_Entries[entries + 1];
-		}
-		Cached_Entries[cache_count -1] = temp_entry;
-		// Update the access date of the updated cache entry
-		struct tm current_time;
-		time_t now = time(NULL); 
-		current_time = *gmtime(&now);
-		const char *date_format = "%a, %d %b %Y %H:%M:%S GMT";
-		strftime(Cached_Entries[cache_count - 1].Access_Date, sizeof(Cached_Entries[cache_count - 1].Access_Date), date_format, &current_time);	
-	}
-	return 0;
-}
- 
+//Print all cache entries
 int Dump_Cache() {
 	
-	int index;
+    int index;
+	//No entries in cache
     if (cache_count == 0) {
-        printf("Cache is currently empty.\n");
+		printf("Cache is currently empty.\n");
     } else {
+		//Can display total entries
         printf("Cache Entries:\n");
-
+		//loop through the entries
         for (index = 0; index < cache_count; index++) {
             printf("Cache Entry %d\n", index + 1);
             printf("URL: %s\n", Cached_Entries[index].URL);
             printf("Access Date: %s\n", Cached_Entries[index].Access_Date);
-            
+            //if present then only access, otherwise crashes
             if (strcmp(Cached_Entries[index].Expires, "") != 0) {
                 printf("Expires: %s\n", Cached_Entries[index].Expires);
             } else {
@@ -84,39 +33,110 @@ int Dump_Cache() {
     }
 	return 0;
 }
-    
+
+int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
+	
+	int entries = 0;
+	//check for new entry flag
+	if (newEntry == 1) {
+		//Max cache count reached, clear first entry
+		if (cache_count == MAX_NUM_CACHE) {
+			Cached_Entries[0] = Clear_Entry;
+			for (entries = 0; entries < MAX_NUM_CACHE; entries++){
+				//Shift the entries
+				if (entries + 1 != MAX_NUM_CACHE)
+					Cached_Entries[entries] = Cached_Entries[entries+1];
+				else {
+					// New entry add to head
+					memset(&Cached_Entries[entries], 0, sizeof(struct cache_));
+					memcpy(Cached_Entries[entries].URL, target, 256);
+					Cached_Entries[entries].content = (char *) malloc(strlen(info));
+					memcpy(Cached_Entries[entries].content, info, strlen(info));
+					//look for the fields and copy
+					Header_parser("Expires:", info, Cached_Entries[entries].Expires);
+					//TODO: check if present
+					Header_parser("Last-Modified:", info, Cached_Entries[entries].Last_Modified);
+					Header_parser("AccessDate:", info, Cached_Entries[entries].Access_Date);
+				}
+			}
+		} else {
+			//Space is there just add the entry
+			Cached_Entries[cache_count] = Clear_Entry;
+			memcpy(Cached_Entries[cache_count].URL, target, 256); 
+			Cached_Entries[cache_count].content = (char *) malloc(strlen(info));
+			memcpy(Cached_Entries[cache_count].content, info, strlen(info));
+			//Todo: Same as above
+			Header_parser("Expires:", info, Cached_Entries[cache_count].Expires);
+			Header_parser("Last-Modified:", info, Cached_Entries[cache_count].Last_Modified);
+			Header_parser("AccessDate:", info, Cached_Entries[cache_count].Access_Date);
+			//Increment the count
+			cache_count++;
+		}
+	} else {
+		//Entry already present just update it it
+		struct cache_ temp_entry;
+		memset(&temp_entry, 0, sizeof(struct cache_));
+		//reach the entry
+		temp_entry = Cached_Entries[entry];
+		//Walk through the entries
+		for (entries = entry; entries < cache_count; entries++) {
+			if (entries == cache_count - 1)
+				break;
+			//Shift them
+			Cached_Entries[entries] = Cached_Entries[entries + 1];
+		}
+		Cached_Entries[cache_count -1] = temp_entry;
+		//Update the time with current time
+		struct tm current_time;
+		time_t now = time(NULL); 
+		//get current time
+		current_time = *gmtime(&now);
+		// From Man
+		const char *date_format = "%a, %d %b %Y %H:%M:%S GMT";
+		//Change current time in Access
+		strftime(Cached_Entries[cache_count - 1].Access_Date, sizeof(Cached_Entries[cache_count - 1].Access_Date), date_format, &current_time);	
+	}
+	return 0;
+}
 
 int IsCacheEntryFresh (int entry) {
 	
 	time_t currentTime = time(NULL);
+	//get current time in GMT
     struct tm currentGMTTime = *gmtime(&currentTime);
     struct tm expiresTime;
 
     if (strcmp(Cached_Entries[entry].Expires, "") != 0) {
+		//From Man
         if (strptime(Cached_Entries[entry].Expires, "%a, %d %b %Y %H:%M:%S %Z", &expiresTime) == NULL) {
-            // Error parsing the date string
+            //Date cannot be parsed
+			//Todo: Add print maybe
             return -1;
         }
-        
+        //conver the time to time_t to compare
         time_t expires = mktime(&expiresTime);
+		//From https://pubs.opengroup.org/onlinepubs/009695399/functions/mktime.html
         time_t now = mktime(&currentGMTTime);
         
         if (expires != -1 && now != -1) {
+			//Not expired, entry should be fresh
             if (difftime(now, expires) < 0) {
-                return 1; // Cache entry is fresh
+                return 1;
             }
         }
     }
-    
-    return -1; // Cache entry is not fresh or there was an error
+    //Expired entry return -1, set variable
+    return -1; 
 }	
 
-      
+//Serach based on URL     
 int Cache_FindElement(char *target) {
 	
 	int entry = 0;
+	//Walk throigh the entries
 	for (entry = 0; entry < MAX_NUM_CACHE; entry++) {
 		if (strcmp(Cached_Entries[entry].URL, target) == 0) {
+			//Found entry, return its index
 			return entry;
 		}
 	}
@@ -124,30 +144,33 @@ int Cache_FindElement(char *target) {
 	return -1;
 }
 
+//Connect to remote host
 int connectHost(char *hostname) {
 	
-	int websocket = 0, s = 0;
+	int websocket = -1, s = -1;
 	struct addrinfo hints, *result, *rp;
 	
 	//From getaddrinfo Man page
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET; 
 	hints.ai_socktype = SOCK_STREAM;
-	
+	//ToDo: set family as unspecific, check
 	if ((s = getaddrinfo(hostname, "http", &hints, &result)) != 0) {
 		fprintf(stderr, "Server: getaddrinfo: %s\n", gai_strerror(s));
 		exit(EXIT_FAILURE);
 	}
 	
 	for(rp = result; rp != NULL; rp = rp->ai_next) {
+		//Create socket
 		websocket = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		//If seuccesful connect and break, otherwise keep trying
 		if (websocket >= 0 && (connect(websocket, rp->ai_addr, rp->ai_addrlen) >= 0)) 
 			break;
 	}
-	
+	//No socket found
 	if (rp == NULL)
 		websocket = -1;
-	
+	//Todo: Check if any assigned, might cause crash
 	freeaddrinfo(result);
 	return websocket;
 }
