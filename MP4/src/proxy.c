@@ -58,7 +58,7 @@ int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
 					Header_parser("Expires:", info, Cached_Entries[entries].Expires);
 					//TODO: check if present
 					Header_parser("Last-Modified:", info, Cached_Entries[entries].Last_Modified);
-					Header_parser("AccessDate:", info, Cached_Entries[entries].Access_Date);
+					Header_parser("Date:", info, Cached_Entries[entries].Access_Date);
 				}
 			}
 		} else {
