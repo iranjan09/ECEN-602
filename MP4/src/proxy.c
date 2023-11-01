@@ -240,7 +240,7 @@ int start_proxy(int sockfd) {
 		isNotExpired = IsCacheEntryFresh(cachedEntry);
 
 	//if entry present and not expired just update
-	if (cachedEntry != -1 && isNotExpired) {
+	if (cachedEntry != -1 && isNotExpired == 1) {
 		printf("Server: Client request for url: %s is present in cache and is not expired\n", target);
     
 		// Just update the entry with new access time
