@@ -43,24 +43,29 @@ struct cache_ {
   char *content;
 };
 
-static const struct cache_ Clear_Entry;
-int cache_count = 0;
-
 struct cache_ Cached_Entries[MAX_NUM_CACHE];
 
+int cache_count = 0;
+
+static const struct cache_ Clear_Entry;
+
 int Header_parser(const char* header, char* message, char* result) {
-	
+	// Find the start position of the header
 	char *start = strstr(message, header);
 	if(!start) {
 		return 0;
 	}
+	// Find the end of the header line by searching for the next '\r\n'
 	char *end = strstr(start, "\r\n");
+	
 	start = start + strlen(header);
 	while(*start == ' ')
 		++start;
 	while(*(end - 1) == ' ')
 		--end;
+	//Todo: use strncpy---Done
 	strncpy(result, start, end - start);
+	//Null terminate it
 	result[end - start] = '\0';
 	return 1;
 }
