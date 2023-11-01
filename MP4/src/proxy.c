@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE /* See feature_test_macros(7) */
+#include <time.h>
 #include "include.h"
 
 //Print all cache entries
@@ -118,30 +120,28 @@ int IsCacheEntryFresh (int entry) {
 	
 	time_t currentTime = time(NULL);
 	//get current time in GMT
-    struct tm currentGMTTime = *gmtime(&currentTime);
+    struct tm currentGMTTime;
+	currentGMTTime = *gmtime(&currentTime);
     struct tm expiresTime;
 
     if (strcmp(Cached_Entries[entry].Expires, "") != 0) {
 		//From Man
-        if (strptime(Cached_Entries[entry].Expires, "%a, %d %b %Y %H:%M:%S %Z", &expiresTime) == NULL) {
-            //Date cannot be parsed
-			//Todo: Add print maybe
-            return -1;
-        }
+        strptime(Cached_Entries[entry].Expires, "%a, %d %b %Y %H:%M:%S %Z", &expiresTime);
+        //Todo:Date cannot be parsed Add print maybe   
         //conver the time to time_t to compare
         time_t expires = mktime(&expiresTime);
 		//From https://pubs.opengroup.org/onlinepubs/009695399/functions/mktime.html
         time_t now = mktime(&currentGMTTime);
         
-        if (expires != -1 && now != -1) {
-			//Not expired, entry should be fresh
-            if (difftime(now, expires) < 0) {
-                return 1;
-            }
-        }
-    }
-    //Expired entry return -1, set variable
-    return -1; 
+        //Not expired, entry should be fresh
+        if (difftime(now, expires) < 0) {
+            return 1;
+        } else
+			return -1;
+    } else {
+		//Expired entry return -1, set variable
+		return -1; 
+	}
 }	
 
 //Connect to remote host
