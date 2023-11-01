@@ -70,7 +70,7 @@ int UpdateCacheEntry(char *target, char *info, int newEntry, int entry) {
 			//Todo: Same as above
 			Header_parser("Expires:", info, Cached_Entries[cache_count].Expires);
 			Header_parser("Last-Modified:", info, Cached_Entries[cache_count].Last_Modified);
-			Header_parser("AccessDate:", info, Cached_Entries[cache_count].Access_Date);
+			Header_parser("Date:", info, Cached_Entries[cache_count].Access_Date);
 			//Increment the count
 			cache_count++;
 		}
