@@ -83,33 +83,40 @@ int targetParser (char* target, char *host, int *port, char *path) {
     // Check if the URL contains "http" and extract the relevant part
     if (strstr(target, "http") != NULL) {
         token = strtok(target, ":");
+		//skip http part
         temp1 = token + 7;
     } else {
         temp1 = target;
     }
 
     // Make a temporary copy for further parsing
+	
     temp2 = (char *)malloc(64);
+	//Todo:strncpy and calloc
     memcpy(temp2, temp1, 64);
     
     // Check if a port is specified, otherwise use the default (80)
     if (strstr(temp1, ":") != NULL) {
         hostPart = strtok(temp1, ":");
         *port = atoi(temp1 + strlen(hostPart) + 1);
+		//Copy the port number
         snprintf(portString, sizeof(portString), "%d", *port);
         pathPart = temp1 + strlen(hostPart) + strlen(portString) + 1;
     } else {
         hostPart = strtok(temp1, "/");
+	//default 80
         *port = 80;
         pathPart = temp2 + strlen(hostPart);
     }
 
     // Set the path to '/' if it is empty
     if (strcmp(pathPart, "") == 0) {
+	//Todo: use strncpy
         strcpy(pathPart, "/");
     }
 
     // Copy the hostname and path to the respective output variables
+	
     memcpy(host, hostPart, 64);
     memcpy(path, pathPart, 256);
 
