@@ -1,4 +1,4 @@
-# Network Programming Assignment 3 - TFTP Server
+# Network Programming Assignment 4 - HTTP Proxy
 
 ## Introduction
 
