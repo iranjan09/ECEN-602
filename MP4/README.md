@@ -53,7 +53,7 @@ This project implements a HTTP proxy server and HTTP command line client. The im
 
 4. Start the server with the command: `proxy <IP address> <Port>`, specifying the listening port.
 
-5. Send a request to the proxy server with the command `proxy <IP address> <Port>`.
+5. Send a request to the proxy server with the command `client <IP address> <Port> <URL>>`.
 
 ## ChatGPT Code Enhancement
 
