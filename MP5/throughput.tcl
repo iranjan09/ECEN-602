@@ -41,7 +41,6 @@ set link_delay 0
 # Choose the input delay based on the case number
 
 switch -exact -- $case_number {
-    #from the MP5
     global link_delay
     1 {set link_delay "12.5ms"}
     2 {set link_delay "20.0ms"}
